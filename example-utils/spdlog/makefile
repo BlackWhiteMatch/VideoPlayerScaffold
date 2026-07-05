@@ -3,16 +3,16 @@
 # ============================================================================
 
 # [1] 编译产物存放的细分目录 (建议指向根目录的 bin)
-OUT_DIR = ../../bin/example-spdlog-demo
+OUT_DIR = ../../bin/example-utils-spdlog-demo
 
 # [2] 最终生成的可执行文件完整路径
-TARGET = $(OUT_DIR)/stdout
+TARGET = $(OUT_DIR)/main
 
 # [3] 当前需要编译的所有源码文件 (如果有多个，用空格隔开)
-SRCS = stdout.cpp
+SRCS = main.cpp ../../src/utils/Logger.cpp
 
 # [4] 编译时需要链接的外部动态库 (如果没有就留空，比如 -ljsoncpp)
-LIBS = -lspdlog -lpthread -lfmt
+LIBS = -I ../../include/VideoPlayerScaffold/utils/ -lspdlog -lgflags -lfmt -lpthread
 
 
 # ============================================================================
