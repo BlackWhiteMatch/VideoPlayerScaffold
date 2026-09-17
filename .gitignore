@@ -71,3 +71,4 @@ Testing/
 #other files
 bin/
 logs/
+.clangd

@@ -4,7 +4,7 @@
 
 ## 📌 项目概述
 
-`VideoPlayerScaffold` 提供了开发高并发、分布式音视频处理服务所需的核心基础组件，涵盖基于 etcd 的服务注册发现与负载均衡、基于 bRPC 的 RPC 通信、基于 FFmpeg 的零编解码 HLS 视频切片以及高性能异步日志等能力。
+`VideoPlayerScaffold` 提供了开发高并发、分布式音视频处理服务所需的核心基础组件，涵盖基于 etcd 的服务注册发现与负载均衡、基于 bRPC 的 RPC 通信、基于 AMQP-CPP 的异步消息队列、基于 FFmpeg 的零编解码 HLS 视频切片以及高性能异步日志等能力。
 
 ## 🛠️ 核心模块
 
@@ -16,6 +16,11 @@
   - 提供 `Channel` 连接池与 `ServiceManager` 服务节点管理器。
   - `ClosureFactory` 自动管理异步回调生命周期，避免内存泄漏。
   - `RpcServerFactory` 快速构建 bRPC 服务端。
+- **AmqpUtil (异步消息队列)**:
+  - 基于 `AMQP-CPP` 与 `libev` 纯异步事件循环驱动。
+  - `AmqpClient`: 线程安全的高性能 AMQP 客户端，封装底层复杂网络事件循环与多线程生命周期管理。
+  - `MessagePublisher`: 支持 Direct/Topic/Fanout 等多种交换机类型的消息投递，提供可靠的异步 Publish 回调。
+  - `MessageSubscriber`: 封装队列声明、交换机绑定与异步消费者监听，支持 DeliveryContext 上下文安全 ACK/NACK。
 - **FFmpegUtil (音视频与流媒体处理)**:
   - `HLSSegmenter`: 零二次编码开销的转封装切片工具 (Remuxing)，自动校正 PTS/DTS 时间戳，输出标准 HLS (`.m3u8` / `.ts`)，支持进度回调。
   - `M3U8Parser`: 解析并修改 M3U8 文件，支持一键批量注入 CDN / 对象存储 URL 前缀。
@@ -28,88 +33,7 @@
 
 ```text
 VideoPlayerScaffold/
-├── include/VideoPlayerScaffold/utils/   # 核心组件头文件 (EtcdUtil, RpcUtil, FFmpegUtil, Logger, JsonUtil)
+├── include/VideoPlayerScaffold/utils/   # 核心组件头文件 (AmqpUtil, EtcdUtil, RpcUtil, FFmpegUtil, Logger, JsonUtil)
 ├── src/utils/                           # 核心组件具体实现
-├── example-utils/                       # 封装工具模块的集成测试 (EtcdUtil, FFmpegUtil, RpcUtil 等)
-└── example/                             # 基础技术栈的原生 Demo (brpc, etcd, ffmpeg, spdlog, gtest 等)
-```
-
-## ⚙️ 环境依赖
-
-- **C++ 标准**: C++17 及以上 (GCC/G++ 8.0+)
-- **依赖库**:
-  - `etcd-cpp-api` (服务注册与发现)
-  - `brpc` & `protobuf` (RPC 通信)
-  - `ffmpeg` (`libavformat`, `libavcodec`, `libavutil`)
-  - `spdlog` & `fmt` (日志)
-  - `jsoncpp` (JSON 处理)
-  - `gflags` / `gtest`
-
-## 🚀 快速使用
-
-### 1. 服务注册与发现 (EtcdUtil)
-
-```cpp
-#include "VideoPlayerScaffold/utils/EtcdUtil.h"
-
-// 服务端：注册服务并自动保活
-EtcdUtil::Provider provider("http://127.0.0.1:2379", /*ttl=*/5);
-provider.Register("user_service", "node-1", "127.0.0.1:9090");
-
-// 客户端：监听服务并轮询获取节点
-EtcdUtil::Watcher watcher("http://127.0.0.1:2379", "/user_service");
-watcher.Start();
-std::string node_addr = watcher.GetEndPoint(); // O(1) 轮询获取可用地址
-```
-
-### 2. HLS 视频切片与 M3U8 处理 (FFmpegUtil)
-
-```cpp
-#include "VideoPlayerScaffold/utils/FFmpegUtil.h"
-
-// 视频无损快速切片
-FFmpegUtil::HLSSegmenterConfig config;
-config.target_segment_duration = 5;
-FFmpegUtil::HLSSegmenter segmenter(config);
-segmenter.Remux("input.mp4", "output.m3u8");
-
-// M3U8 注入 CDN 前缀
-FFmpegUtil::M3U8Parser parser;
-parser.ParseString(m3u8_content);
-parser.ApplyBaseURL("https://cdn.example.com/hls/");
-std::string cdn_m3u8 = parser.Serialize();
-```
-
-### 3. 异步 RPC 调用 (RpcUtil)
-
-```cpp
-#include "VideoPlayerScaffold/utils/RpcUtil.h"
-
-RpcUtil::ServiceManager manager;
-manager.watch("calc_service");
-manager.addNode("calc_service", "127.0.0.1:9000");
-
-auto channel = manager.getNode("calc_service");
-// 通过 RpcUtil::ClosureFactory::create 创建 lambda 异步回调...
-```
-
-## 🔨 编译运行示例
-
-每个示例目录均附带独立的 `makefile`，编译产物统一输出至根目录 `bin/`：
-
-```bash
-# 编译并运行 EtcdUtil 测试示例
-cd example-utils/EtcdUtil
-make
-../../bin/example-utils-EtcdUtil-demo/Service-demo  # 启动服务端
-../../bin/example-utils-EtcdUtil-demo/Client-demo   # 启动客户端
-
-# 编译并运行 FFmpegUtil 切片测试
-cd example-utils/FFmpegUtil
-make
-../../bin/example-utils-FFmpegUtil-demo/main test.mp4 out.m3u8
-```
-
-## 📄 开源许可
-
-[MIT License](LICENSE)
+├── example-utils/                       # 封装工具模块的集成测试 (AmqpUtil, EtcdUtil, FFmpegUtil, RpcUtil 等)
+└── example/                             # 基础技术栈的原生 Demo (amqp, brpc, etcd, ffmpeg, spdlog, gtest 等)
