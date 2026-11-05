@@ -5,21 +5,36 @@
 ## 📌 项目概述
 
 `VideoPlayerScaffold` 提供了开发高并发、分布式音视频处理服务所需的核心基础组件，涵盖：
+- **基于 libcurl 的 SMTP/SMTPS 邮件与验证码异步发送服务** (`MailCodeUtil`) **[NEW]**
+- **基于 JsonCpp 的 Elasticsearch 索引与查询 DSL 链式构建** (`ESUtil`)
+- **基于 ODB 的现代 C++ MySQL 对象关系映射与事务抽象** (`OdbUtil`)
+- **基于 redis-plus-plus 的高性能内存缓存与键值存储** (`RedisUtil`)
+- **基于 FastDFS 的分布式音视频文件与对象存储** (`FastDFSUtil`)
 - **基于 etcd 的服务注册发现与负载均衡** (`EtcdUtil`)
 - **基于 bRPC 的高性能 RPC 通信与异步回调** (`RpcUtil`)
 - **基于 AMQP-CPP 的异步事件驱动消息队列** (`AmqpUtil`)
-- **基于 FastDFS 的分布式音视频文件与对象存储** (`FastDFSUtil`)
-- **基于 redis-plus-plus 的高性能内存缓存与键值存储** (`RedisUtil`)
-- **基于 JsonCpp 的 Elasticsearch 索引与查询 DSL 链式构建** (`ESUtil`) **[NEW]**
-- **基于 ODB 的现代 C++ MySQL 对象关系映射与事务抽象** (`OdbUtil`) **[NEW]**
 - **基于 FFmpeg 的零二次编解码 HLS 媒体流切片与 M3U8 解析** (`FFmpegUtil`)
 - **基于 spdlog 的工业级高性能异步日志追踪** (`Logger`)
+- **基于 JsonCpp 的现代 C++ JSON 序列化工具** (`JsonUtil`)
 
 ---
 
 ## 🛠️ 核心模块
 
-- **ESUtil (Elasticsearch 索引映射与查询 DSL 链式构建工具) [NEW]**:
+- **MailCodeUtil (基于 libcurl 的 SMTP/SMTPS 邮件与验证码发送组件) [NEW]**:
+  - **RAII 原生资源安全管控**: 封装底层原生 C 风格的 `CURL*` 句柄和 `curl_slist*` 链表指针，定制特化智能删除器 `CurlDeleter` 与 `SlistDeleter`，通过 `std::unique_ptr` (`CurlHandle` / `CurlSlist`) 实现严格的 RAII 资源生命周期托管。无论发生网络异常、超时或提前退出，均能自动释放资源，彻底杜绝原生 C 指针的句柄与内存泄漏。
+  - **结构化解耦模型 (`MailCofig` & `MailMessage`)**:
+    - `MailCofig`: 统一管理邮件网关协议与认证凭据，支持 SMTPS 加密传输协议 URL（如 `smtps://smtp.163.com`）、用户名、客户端独立授权码/密码及发件人地址（`from_addr`）。
+    - `MailMessage`: 封装收件人列表（支持单发/群发 `to_addrs`）、邮件主题（`subject`）、正文（`body`）以及 HTML 格式开关（`is_html`，自动构建符合标准 MIME 规范的 `text/html; charset=UTF-8` 或 `text/plain` 报文头）。
+  - **流式分块读取与状态机 (`UploadContext` & `readCallback`)**:
+    - 基于 libcurl 的 `CURLOPT_READFUNCTION` 回调机制与 `UploadContext` 上下文状态机，利用内存分块拷贝（`memcpy` 与内部游标偏移控制），实现邮件报文与富文本内容的高效流式上传，避免大数据量内存颠簸。
+  - **生产级安全传输与超时防护**:
+    - 原生开启 SSL/TLS 安全证书与主机名双重验证（`CURLOPT_SSL_VERIFYPEER = 1L`, `CURLOPT_SSL_VERIFYHOST = 2L`），无缝兼容各大主流邮箱服务商（网易 163、QQ 邮箱、Gmail、企业微信等）的高安全性加密规范。
+    - 内置超时保护机制：设置 10 秒连接超时（`CURLOPT_CONNECTTIMEOUT = 10L`）与 30 秒传输超时（`CURLOPT_TIMEOUT = 30L`），防止因网络抖动导致业务线程阻塞挂起。
+  - **全局生命周期自管理**:
+    - `SMTPClient` 构造时自动托管 `curl_global_init(CURL_GLOBAL_DEFAULT)`，析构时自动触发 `curl_global_cleanup()`，开箱即用。
+
+- **ESUtil (Elasticsearch 索引映射与查询 DSL 链式构建工具)**:
   - **解耦设计理念**: 将复杂的 ES RESTful JSON 报文生成与底层网络通信解耦，专注提供高性能、零多态切片风险、纯内存的语法构建器，配合已有客户端或原生 `elasticlient` 使用。
   - **`ESIndexBuilder` (索引建表映射构建器 / DDL)**:
     - 支持自定义分词器挂载（`AddCustomAnalyzer`，如将 `ikmax` 绑定至 `ik_max_word`）。
@@ -35,7 +50,7 @@
   - **零胶水无缝集成 (`operator std::string()`)**:
     - 原生重载类型转换运算符，在将构建器直接传入 `elasticlient::Client::search` 等第三方网络接口（形参为 `const std::string&`）时，编译器在最后一刻自动触发 `Build()` 隐式转换为合法的 JSON 字符串，实现极致丝滑的调用体验。
 
-- **OdbUtil (MySQL C++ ORM 数据库访问与事务管理) [NEW]**:
+- **OdbUtil (MySQL C++ ORM 数据库访问与事务管理)**:
   - `MySQLSetting`: 结构化配置模型，支持指定主机、端口、数据库用户/密码、库名、字符集（`utf8mb4`）以及连接池大小（`pool_size`）。
   - **连接池管理 (`createDatabase`)**: 原生集成 `odb::mysql::connection_pool_factory` 连接池，提升数据库高并发连接复用，避免频繁建立 TCP 连接。
   - **现代事务包装器 (`executeTransaction` / `Client::execute`)**: 采用 C++17 `if constexpr` 与 `std::invoke_result_t` 自动推导并捕获 Lambda 返回值，结合 RAII 自动管理 `odb::transaction` 的开启与提交（commit），支持带返回值或 `void` 的任意复杂业务闭包，异常自动回滚。
@@ -87,7 +102,50 @@
 
 ## 💡 快速上手示例
 
-### 1. Elasticsearch 索引建表与 DSL 检索快速使用 [NEW]
+### 1. MailCodeUtil SMTP 邮件与验证码发送快速使用 [NEW]
+
+```cpp
+#include "VideoPlayerScaffold/utils/MailCodeUtil.h"
+#include <iostream>
+
+int main() {
+    // 1. 初始化邮件客户端配置 (以网易 163 邮箱 SMTPS 为例)
+    MailCodeUtil::MailCofig config{
+        .url = "smtps://smtp.163.com",
+        .username = "your_email@163.com",
+        .password = "your_smtp_auth_code", // 注意：需使用邮箱后台生成的客户端授权码
+        .from_addr = "your_email@163.com"
+    };
+
+    // 2. 构造邮件报文 (支持多收件人与富文本 HTML 模板)
+    MailCodeUtil::MailMessage message{
+        .to_addrs = {"recipient@example.com"},
+        .subject = "【VideoPlayerScaffold】账号注册验证码",
+        .body = "<div style='font-family: Arial, sans-serif; padding: 20px; border: 1px solid #eee; border-radius: 8px;'>"
+                "<h2 style='color: #2b5876;'>欢迎注册 VideoPlayerScaffold 账号</h2>"
+                "<p>您本次操作的动态安全验证码为：</p>"
+                "<div style='font-size: 28px; font-weight: bold; color: #4e54c8; letter-spacing: 4px; padding: 12px 0;'>886699</div>"
+                "<p style='color: #888; font-size: 13px;'>验证码有效期为 5 分钟，请勿将验证码泄露给他人。如非本人操作请忽略此邮件。</p>"
+                "</div>",
+        .is_html = true
+    };
+
+    // 3. 实例化 SMTP 客户端并执行发送
+    MailCodeUtil::SMTPClient smtpClient(config);
+
+    std::cout << "正在发送验证码邮件..." << std::endl;
+    if (smtpClient.send(message)) {
+        std::cout << "邮件已成功投递至各收件人信箱！" << std::endl;
+    } else {
+        std::cerr << "邮件发送失败，请核对网络连接或 SMTP 授权码配置！" << std::endl;
+        return -1;
+    }
+
+    return 0;
+}
+```
+
+### 2. Elasticsearch 索引建表与 DSL 检索快速使用
 
 ```cpp
 #include "VideoPlayerScaffold/utils/ESUtil.h"
@@ -133,7 +191,7 @@ int main() {
 }
 ```
 
-### 2. ODB MySQL ORM 事务与数据操作快速使用 [NEW]
+### 3. ODB MySQL ORM 事务与数据操作快速使用
 
 ```cpp
 #include "VideoPlayerScaffold/utils/OdbUtil.h"
@@ -171,7 +229,7 @@ int main() {
 }
 ```
 
-### 3. Redis 缓存与多数据结构快速使用
+### 4. Redis 缓存与多数据结构快速使用
 
 ```cpp
 #include "VideoPlayerScaffold/utils/RedisUtil.h"
@@ -224,7 +282,7 @@ int main() {
 }
 ```
 
-### 4. FastDFS 分布式存储快速使用
+### 5. FastDFS 分布式存储快速使用
 
 ```cpp
 #include "VideoPlayerScaffold/utils/FastDFSUtil.h"
@@ -270,8 +328,9 @@ int main() {
 ```text
 VideoPlayerScaffold/
 ├── include/VideoPlayerScaffold/utils/   # 核心组件头文件
-│   ├── ESUtil.h                         # [NEW] Elasticsearch 索引与查询 DSL 链式构建器
-│   ├── OdbUtil.h                        # [NEW] ODB MySQL ORM 连接池与事务自动包装器
+│   ├── MailCodeUtil.h                   # [NEW] 基于 libcurl 的 SMTP/SMTPS 邮件与验证码发送组件
+│   ├── ESUtil.h                         # Elasticsearch 索引与查询 DSL 链式构建器
+│   ├── OdbUtil.h                        # ODB MySQL ORM 连接池与事务自动包装器
 │   ├── RedisUtil.h                      # Redis 封装 (连接池、超时控制、慢查询告警、raw 逃生门)
 │   ├── FastDFSUtil.h                    # FastDFS 分布式文件存储封装
 │   ├── AmqpUtil.h                       # AMQP 异步消息队列封装
@@ -281,7 +340,8 @@ VideoPlayerScaffold/
 │   ├── Logger.h                         # spdlog 工业级高性能日志封装
 │   └── JsonUtil.h                       # JsonCpp 封装
 ├── src/utils/                           # 核心组件具体实现
-│   ├── ESUtil.cpp                       # [NEW] ESUtil 索引建表与查询构建实现
+│   ├── MailCodeUtil.cpp                 # [NEW] MailCodeUtil 发送逻辑、流式上传与 RAII 资源管理实现
+│   ├── ESUtil.cpp                       # ESUtil 索引建表与查询构建实现
 │   ├── RedisUtil.cpp                    # RedisUtil 接口实现与慢查询追踪
 │   ├── FastDFSUtil.cpp                  # FastDFS 接口实现与内存自清理
 │   ├── AmqpUtil.cpp                     # AMQP 事件循环与发布/订阅实现
@@ -290,7 +350,8 @@ VideoPlayerScaffold/
 │   ├── Logger.cpp                       # 日志单例与追踪实现
 │   └── JsonUtil.cpp                     # JSON 序列化实现
 ├── example-utils/                       # 封装工具模块的集成测试
-│   ├── ESUtil/                          # [NEW] ESUtil 综合单元测试 (建表/全量/组合过滤/Terms/Should/排序)
+│   ├── MailCodeUtil/                    # [NEW] MailCodeUtil 二次封装集成测试 (配置/富文本/发送验证)
+│   ├── ESUtil/                          # ESUtil 综合单元测试 (建表/全量/组合过滤/Terms/Should/排序)
 │   ├── RedisUtil/                       # RedisUtil 综合测试 (基础操作/TTL验证/raw逃生门)
 │   ├── FastDFSUtil/                     # FastDFS 二次封装集成测试
 │   ├── AmqpUtil/                        # AMQP 消息队列测试
@@ -300,8 +361,9 @@ VideoPlayerScaffold/
 │   ├── JsonUtil/                        # JSON 工具测试
 │   └── spdlog/                          # 日志工具测试
 └── example/                             # 基础技术栈的原生 Demo 与学习案例
-    ├── elasticsearch/                   # [NEW] elasticlient 原生 C++ 客户端增删改查演示
-    ├── odb/                             # [NEW] ODB MySQL ORM 综合实战演练
+    ├── stmp/                            # [NEW] libcurl 原生 SMTP/SMTPS 协议纯裸写邮件发送演示
+    ├── elasticsearch/                   # elasticlient 原生 C++ 客户端增删改查演示
+    ├── odb/                             # ODB MySQL ORM 综合实战演练
     │   ├── CRUD/                        # ODB 增删改查实体操作演示
     │   ├── View/                        # ODB 视图映射与多表查询演示
     │   └── student_table/               # ODB 编译器生成的映射头文件与 SQL
@@ -313,6 +375,8 @@ VideoPlayerScaffold/
     ├── ffmpeg/                          # FFmpeg 原生切片 Demo
     ├── gflags/                          # 命令行参数解析 Demo
     ├── gtest/                           # 单元测试框架 Demo
+    ├── httplib/                         # cpp-httplib HTTP 服务端与客户端 Demo
+    ├── websocketpp/                     # WebSocket 原生通讯 Demo
     └── ...
 ```
 
@@ -323,8 +387,9 @@ VideoPlayerScaffold/
 | 组件 | 对应库 | 说明 |
 | :--- | :--- | :--- |
 | **C++ 标准** | `C++17` | 全局采用现代 C++ 规范 (`std::optional`, `if constexpr`, 类型推导等) |
-| **全文检索** | `elasticlient`, `cpr`, `jsoncpp` | **[NEW]** Elasticsearch C++ 客户端驱动与请求体 JSON DSL 序列化 |
-| **ORM / 数据库** | `libodb`, `libodb-mysql`, `libmysqlclient` | **[NEW]** 高性能编译期强类型 C++ ORM 框架与 MySQL 连接池 |
+| **邮件与验证码** | `libcurl`, `openssl` | **[NEW]** 基于 libcurl 的 SMTP/SMTPS 协议邮件发送与 SSL/TLS 加密通信 |
+| **全文检索** | `elasticlient`, `cpr`, `jsoncpp` | Elasticsearch C++ 客户端驱动与请求体 JSON DSL 序列化 |
+| **ORM / 数据库** | `libodb`, `libodb-mysql`, `libmysqlclient` | 高性能编译期强类型 C++ ORM 框架与 MySQL 连接池 |
 | **内存缓存/KV存储** | `redis++`, `hiredis` | Redis 官方推荐的现代 C++ 客户端驱动及底座 |
 | **分布式存储** | `libfdfsclient`, `libfastcommon` | FastDFS 客户端及基础库 |
 | **服务注册发现**| `etcd-cpp-api`, `protobuf`, `grpc` | etcd v3 客户端依赖 |
@@ -337,7 +402,33 @@ VideoPlayerScaffold/
 
 ## 🔨 编译与运行集成用例
 
-### 运行 ESUtil 检索构建器测试用例 [NEW]
+### 运行 MailCodeUtil 邮件工具测试用例 [NEW]
+```bash
+cd example-utils/MailCodeUtil/
+
+# 编译并输出到 bin/ 隔离目录
+make
+
+# 运行测试用例（在 smtp.cpp 中填入有效 SMTP 账户和授权码后即可测试实际投递）
+make run
+
+# 清理编译产物
+make clean
+```
+
+### 运行 libcurl 原生 SMTP 演练 [NEW]
+```bash
+cd example/stmp/
+
+# 编译并运行原生 libcurl 邮件发送 Demo
+make
+make run
+
+# 清理编译产物
+make clean
+```
+
+### 运行 ESUtil 检索构建器测试用例
 ```bash
 cd example-utils/ESUtil/
 
@@ -351,7 +442,7 @@ make run
 make clean
 ```
 
-### 运行 Elasticsearch 原生客户端演练 [NEW]
+### 运行 Elasticsearch 原生客户端演练
 ```bash
 cd example/elasticsearch/
 
@@ -360,7 +451,7 @@ make
 make run
 ```
 
-### 运行 ODB MySQL ORM 演练用例 [NEW]
+### 运行 ODB MySQL ORM 演练用例
 ```bash
 # 1. 运行 CRUD 实体增删改查
 cd example/odb/CRUD/
