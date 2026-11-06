@@ -1,6 +1,18 @@
 # VideoPlayerScaffold
 
-基于 C++17 构建的高性能音视频流媒体与分布式服务脚手架。
+<p align="center">
+  <img src="https://img.shields.io/badge/C%2B%2B-17-blue.svg?style=flat-square" alt="C++17">
+  <img src="https://img.shields.io/badge/CMake-3.16%2B-brightgreen.svg?style=flat-square" alt="CMake">
+  <img src="https://img.shields.io/badge/Platform-Linux-orange.svg?style=flat-square" alt="Platform">
+  <img src="https://img.shields.io/badge/Library-Static%20(.a)-purple.svg?style=flat-square" alt="Static Library">
+  <img src="https://img.shields.io/badge/License-MIT-green.svg?style=flat-square" alt="License">
+</p>
+
+基于 **C++17** 与 **Modern CMake** 构建的高性能音视频流媒体与分布式微服务通用脚手架。
+
+原生支持按需打包为模块化静态链接库（`libVideoPlayerScaffold.a`），封装高并发流媒体、分布式存储、服务发现、异步队列及内存缓存核心基础组件，开箱即用。
+
+---
 
 ## 📌 项目概述
 
@@ -16,6 +28,124 @@
 - **基于 FFmpeg 的零二次编解码 HLS 媒体流切片与 M3U8 解析** (`FFmpegUtil`)
 - **基于 spdlog 的工业级高性能异步日志追踪** (`Logger`)
 - **基于 JsonCpp 的现代 C++ JSON 序列化工具** (`JsonUtil`)
+
+---
+
+---
+
+## 🚀 构建与打包静态库 (CMake Build Guide)
+
+本项目全面采用 **Modern CMake (3.16+)** 进行工程化管理，原生支持打包为**高性能静态链接库 (`libVideoPlayerScaffold.a`)**。
+
+针对 C++ 分布式系统依赖多、异构环境复杂的痛点，构建系统提供了**细粒度组件化开关（Feature Flags）**，支持**全量构建**或**按需轻量构建**，杜绝无用的依赖污染。
+
+### 1. 快速构建
+
+```bash
+# 1. 克隆代码仓库
+git clone https://github.com/BlackWhiteMatch/VideoPlayerScaffold.git
+cd VideoPlayerScaffold
+
+# 2. 创建并进入构建目录
+mkdir build && cd build
+
+# 3. 配置 CMake (以启用邮件与 JSON 模块为例)
+cmake .. -DVPS_ENABLE_MAIL=ON -DVPS_ENABLE_JSON=ON
+
+# 4. 多核并行编译 (产物为 build/libVideoPlayerScaffold.a)
+make -j$(nproc)
+```
+
+---
+
+### 2. 编译选项对照表 (按需开启)
+
+| 编译选项 | 默认值 | 对应模块 | 所需外部依赖 |
+| :--- | :---: | :--- | :--- |
+| `-DVPS_ENABLE_ALL=ON` | `OFF` | **一键开启所有组件** | 需安装下方所有对应第三方库 |
+| `-DVPS_ENABLE_LOGGER=ON` | `ON` | 异步日志追踪 (`Logger`) | `spdlog`, `fmt`, `pthread` |
+| `-DVPS_ENABLE_JSON=ON` | `ON` | JSON 序列化工具 (`JsonUtil`) | `jsoncpp`, `spdlog` |
+| `-DVPS_ENABLE_MAIL=ON` | `ON` | 邮件与验证码发送 (`MailCodeUtil`) | `libcurl` |
+| `-DVPS_ENABLE_ES=ON` | `ON` | ES 索引与 DSL 构建 (`ESUtil`) | `jsoncpp` |
+| `-DVPS_ENABLE_REDIS=ON` | `OFF` | Redis 缓存 (`RedisUtil`) | `redis++`, `hiredis`, `pthread` |
+| `-DVPS_ENABLE_FFMPEG=ON` | `OFF` | 音视频切片工具 (`FFmpegUtil`) | `libavformat`, `libavcodec`, `libavutil` |
+| `-DVPS_ENABLE_AMQP=ON` | `OFF` | 消息队列 (`AmqpUtil`) | `amqpcpp`, `libev`, `pthread` |
+| `-DVPS_ENABLE_FASTDFS=ON` | `OFF` | 分布式文件存储 (`FastDFSUtil`) | `libfdfsclient`, `libfastcommon` |
+| `-DVPS_ENABLE_ETCD=ON` | `OFF` | 服务发现与治理 (`EtcdUtil`) | `etcd-cpp-api`, `cpprest` |
+| `-DVPS_ENABLE_RPC=ON` | `OFF` | 高性能 RPC (`RpcUtil`) | `brpc`, `protobuf`, `openssl`, `leveldb` |
+
+> 💡 **提示**：如果你的服务器已经完整配置了所有后端依赖，可直接执行 `cmake .. -DVPS_ENABLE_ALL=ON` 一键打包全功能静态库。
+
+---
+
+### 3. 系统级安装 (可选)
+
+通过 `make install` 可将静态库与头文件安装至系统公共路径（默认 `/usr/local`）：
+
+```bash
+sudo make install
+```
+安装后产物布局：
+* 头文件目录：`/usr/local/include/VideoPlayerScaffold/`
+* 静态库文件：`/usr/local/lib/libVideoPlayerScaffold.a`
+* CMake 导出配置：`/usr/local/lib/cmake/VideoPlayerScaffold/`
+
+---
+
+## 🔌 下游项目集成指南 (Integration Guide)
+
+在你的新业务项目（如视频上传服务、鉴权网关、流媒体切片服务）中，推荐使用以下两种 Modern CMake 方式引入本项目：
+
+### 方式 1：子模块内嵌引入 (Git Submodule，推荐)
+将本项目作为子目录放置在业务工程中（如 `third_party/VideoPlayerScaffold`）：
+
+```cmake
+# 业务项目的 CMakeLists.txt
+cmake_minimum_required(VERSION 3.16)
+project(MyVideoServer CXX)
+
+set(CMAKE_CXX_STANDARD 17)
+
+# 1. 开启业务所需的组件开关
+set(VPS_ENABLE_REDIS ON CACHE BOOL "" FORCE)
+set(VPS_ENABLE_MAIL  ON CACHE BOOL "" FORCE)
+set(VPS_ENABLE_JSON  ON CACHE BOOL "" FORCE)
+
+# 2. 引入脚手架子目录
+add_subdirectory(third_party/VideoPlayerScaffold)
+
+# 3. 业务目标程序
+add_executable(my_video_server src/main.cpp)
+
+# 4. 链接静态库 (自动传递头文件搜索路径与第三方传递依赖)
+target_link_libraries(my_video_server PRIVATE VideoPlayerScaffold::VideoPlayerScaffold)
+```
+
+在 C++ 业务源码中直接规范引用：
+```cpp
+#include <VideoPlayerScaffold/utils/Logger.h>
+#include <VideoPlayerScaffold/utils/MailCodeUtil.h>
+#include <VideoPlayerScaffold/utils/RedisUtil.h>
+
+int main() {
+    utils::Logger::Init();
+    LOG_INFO("MyVideoServer is starting...");
+    return 0;
+}
+```
+
+---
+
+### 方式 2：基于 `find_package` 系统级引入
+如果你执行过 `sudo make install`，或者从 GitHub Releases 下载并解压了预编译静态库归档包，你的业务工程只需极其优雅的两行：
+
+```cmake
+# 业务项目的 CMakeLists.txt
+find_package(VideoPlayerScaffold REQUIRED)
+
+add_executable(my_video_server src/main.cpp)
+target_link_libraries(my_video_server PRIVATE VideoPlayerScaffold::VideoPlayerScaffold)
+```
 
 ---
 
@@ -97,6 +227,8 @@
 
 - **JsonUtil (JSON 工具)**:
   - 基于 JsonCpp，提供采用 `std::optional` 的现代 C++ 序列化与反序列化接口。
+
+---
 
 ---
 
@@ -323,10 +455,13 @@ int main() {
 
 ---
 
+---
+
 ## 📂 目录结构
 
 ```text
 VideoPlayerScaffold/
+├── CMakeLists.txt                       # [NEW] 根目录 Modern CMake 构建配置文件 (支持静态库打包)
 ├── include/VideoPlayerScaffold/utils/   # 核心组件头文件
 │   ├── MailCodeUtil.h                   # [NEW] 基于 libcurl 的 SMTP/SMTPS 邮件与验证码发送组件
 │   ├── ESUtil.h                         # Elasticsearch 索引与查询 DSL 链式构建器
@@ -382,6 +517,8 @@ VideoPlayerScaffold/
 
 ---
 
+---
+
 ## 📦 依赖环境
 
 | 组件 | 对应库 | 说明 |
@@ -397,6 +534,8 @@ VideoPlayerScaffold/
 | **消息队列** | `amqpcpp`, `libev` | 纯异步 AMQP 事件驱动 |
 | **音视频处理** | `libavformat`, `libavcodec`, `libavutil` | FFmpeg 媒体流解封装与封装 |
 | **日志与工具** | `spdlog`, `jsoncpp`, `pthread` | 日志追踪、JSON 处理与多线程 |
+
+---
 
 ---
 
